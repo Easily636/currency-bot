@@ -174,7 +174,7 @@ def explain_currency(currency_code: str):
     return "На курс валюты влияют спрос и предложение, торговый баланс, инфляция, ключевая ставка и внешнеэкономическая ситуация."
 
 
-app.route("/webhook", methods=["POST"])
+@app.route("/webhook", methods=["POST"])
 
 def webhook():
 
