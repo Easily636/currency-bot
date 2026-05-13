@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 import requests
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
+import re
 
 app = Flask(__name__)
 
@@ -57,6 +58,11 @@ def find_currency(text: str):
             return code
     return None
 
+def find_amount(text: str):
+    match = re.search(r"\d+(?:[.,]\d+)?", text)
+    if match:
+        return float(match.group().replace(",", "."))
+    return None
 
 def get_cbr_rate(currency_code: str):
     response = requests.get(CBR_DAILY_URL, timeout=10)
@@ -168,44 +174,86 @@ def explain_currency(currency_code: str):
     return "На курс валюты влияют спрос и предложение, торговый баланс, инфляция, ключевая ставка и внешнеэкономическая ситуация."
 
 
-@app.route("/webhook", methods=["POST"])
+app.route("/webhook", methods=["POST"])
+
 def webhook():
+
     data = request.get_json()
 
     text = data.get("queryResult", {}).get("queryText", "").lower()
 
     currency_code = find_currency(text)
 
+    amount = find_amount(text)
+
     if not currency_code:
+
         answer = (
+
             "Напишите валюту: доллар, евро, юань, турецкая лира, тенге или дирхам ОАЭ."
+
         )
+
     else:
+
         if "график" in text or "динамика" in text or "за неделю" in text:
+
             dates, values = get_currency_history(currency_code, days=7)
+
             chart = make_text_chart(dates, values)
 
             answer = f"Динамика {currency_code} по ЦБ РФ за последние 7 значений:\n\n{chart}"
-        else:
+
+        elif amount:
+
             name, rate, date = get_cbr_rate(currency_code)
 
             if rate:
+
+                result = amount * rate
+
                 answer = (
-                    f"Курс {name} по ЦБ РФ на {date}: {rate} ₽.\n\n"
-                    f"{explain_currency(currency_code)}"
+
+                    f"{amount:g} {currency_code} по курсу ЦБ РФ на {date} = {result:.2f} ₽.\n\n"
+
+                    f"Курс {name}: {rate} ₽."
+
                 )
+
             else:
+
+                answer = "Не смог найти курс этой валюты на сайте ЦБ РФ."
+
+        else:
+
+            name, rate, date = get_cbr_rate(currency_code)
+
+            if rate:
+
+                answer = (
+
+                    f"Курс {name} по ЦБ РФ на {date}: {rate} ₽.\n\n"
+
+                    f"{explain_currency(currency_code)}"
+
+                )
+
+            else:
+
                 answer = "Не смог найти курс этой валюты на сайте ЦБ РФ."
 
     return jsonify({
+
         "fulfillmentText": answer
+
     })
 
-
 @app.route("/", methods=["GET"])
+
 def home():
+
     return "Webhook работает!"
 
-
 if __name__ == "__main__":
+
     app.run(port=5000)
